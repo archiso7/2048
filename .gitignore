@@ -1,2 +1,6 @@
 dist-newstyle/*
 dist-newstyle
+.stack-work
+.stack-work/*
+stack.yaml.lock
+stack.yaml
