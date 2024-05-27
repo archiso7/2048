@@ -41,5 +41,6 @@ If you find any bugs in the game, head over to the [issues](https://github.com/a
 
 #### Stack
 
-4. Run `stack build` (this will take a while)
-5. Run `stack run` to launch the game
+4. Run `stack init`
+5. Run `stack build` (this will take a while)
+6. Run `stack run` to launch the game
