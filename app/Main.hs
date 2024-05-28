@@ -2,9 +2,11 @@ module Main where
 
 import System.IO
 import System.Random
-import Graphics.Rendering.OpenGL
+import Graphics.Rendering.OpenGL as GL
 import Graphics.UI.GLUT
 import Data.IORef
+import Graphics.Rendering.FTGL as FTGL
+import Foreign.C.String (withCString)
 
 data Direction = DirUp | DirDown | DirLeft | DirRight | DirUnknown deriving (Eq, Show)
 
@@ -157,8 +159,11 @@ display boardRef = do
     clear [ ColorBuffer ]
 
     board <- readIORef boardRef
-
     drawBoard board 0.25
+
+    font <- loadFont "COMICSANS.TTF"  -- Load your font here
+    renderText font "Hello, OpenGL with Haskell!"
+
     flush
 
 color4Norm :: Color4 GLfloat -> Color4 GLfloat
@@ -185,6 +190,19 @@ moveAndRedraw :: IORef [[Int]] -> Direction -> IO ()
 moveAndRedraw boardRef dir = do
     move boardRef dir
     postRedisplay Nothing
+
+loadFont :: String -> IO FTGL.Font
+loadFont fontPath = do
+    font <- FTGL.createPolygonFont fontPath
+    FTGL.setFontFaceSize font 24 72 -- Set font size
+    return font
+
+renderText :: FTGL.Font -> String -> IO ()
+renderText font text = do
+    withCString text $ \cText -> do
+        -- Position the text (adjust as needed)
+        translate $ Vector3 0 (-0.5 :: GLfloat) 0
+        renderFont font text All
 
 main :: IO ()
 main = do
