@@ -18,8 +18,7 @@
 
 ### Controls
 
-- W, A, S, D to move pieces up, left, down, and right.
-  - Arrow keys coming soon!
+- W, A, S, D, or arrow keys to move pieces up, left, down, and right.
 
 
 ## Contributing
