@@ -126,23 +126,32 @@ printBoard (row:rows) = do
 
 drawBoard :: [[Int]] -> GLfloat -> IO ()
 drawBoard board tileSize = do
-    font <- loadFont "COMICSANS.TTF" 24
-    drawTiles board [-0.625, -0.625] tileSize 0.1 0 font
+    drawTiles board [-0.625, -0.625] tileSize 0.1 0
 
-drawTiles :: [[Int]] -> [GLfloat] -> GLfloat -> GLfloat -> Int -> FTGL.Font -> IO ()
-drawTiles tiles startPos tileSize offset i font = do
+drawTiles :: [[Int]] -> [GLfloat] -> GLfloat -> GLfloat -> Int -> IO ()
+drawTiles tiles startPos tileSize offset i = do
     if i >= length (concat tiles) then return ()
     else do
         let [row, col] = iToPos i (length (head tiles))
             xPos = head startPos + offset + (fromIntegral col * (offset + tileSize))
             yPos = startPos !! 1 + offset + (fromIntegral (length tiles - 1 - row) * (offset + tileSize))
             num = concat tiles !! i
-            scale = 0.005
+            s = 0.005
         drawRectangle [xPos, yPos] tileSize tileSize (getColour num)
         if num /= 0
-            then renderText font (show num) [scale, scale] (Color4 0.2 0.2 0.4 1) (Vector3 xPos (yPos-0.05) 0)
+            then do 
+                fontSize <- findFontSize "COMICSANS.TTF" (show num) tileSize s 30
+                font <- loadFont "COMICSANS.TTF" fontSize
+                renderText font (show num) [s, s] (Color4 0.2 0.2 0.4 1) (Vector3 xPos (yPos-0.05) 0)
             else return ()
-        drawTiles tiles startPos tileSize offset (i + 1) font
+        drawTiles tiles startPos tileSize offset (i + 1)
+
+findFontSize :: String -> String -> Float -> Float -> Int -> IO Int
+findFontSize fontPath text maxWidth scale size = do
+    font <- loadFont fontPath size
+    textWidth <- FTGL.getFontAdvance font text
+    if (textWidth*scale) >= maxWidth then findFontSize fontPath text maxWidth scale (size-1)
+    else return size
 
 getColour :: Int -> Color4 GLfloat
 getColour num =
@@ -159,6 +168,7 @@ getColour num =
         512 -> Color4 237 200 80 255
         1024 -> Color4 237 197 63 255
         2048 -> Color4 237 194 46 255
+        _ -> Color4 10 10 10 255
 
 display :: IORef [[Int]] -> DisplayCallback
 display boardRef = do
@@ -213,7 +223,7 @@ renderText font text s color pos = do
 
 main :: IO ()
 main = do
-    let initialBoard = [[128,0,0,0],
+    let initialBoard = [[2,0,0,0],
                         [0,0,0,0],
                         [0,0,2,0],
                         [0,0,0,0]]
