@@ -140,18 +140,23 @@ drawTiles tiles startPos tileSize offset i = do
         drawRectangle [xPos, yPos] tileSize tileSize (getColour num)
         if num /= 0
             then do 
-                fontSize <- findFontSize "COMICSANS.TTF" (show num) tileSize s 30
+                let fontSize = findFontSize (show num)
                 font <- loadFont "COMICSANS.TTF" fontSize
                 renderText font (show num) [s, s] (Color4 0.2 0.2 0.4 1) (Vector3 xPos (yPos-0.05) 0)
             else return ()
         drawTiles tiles startPos tileSize offset (i + 1)
 
-findFontSize :: String -> String -> Float -> Float -> Int -> IO Int
-findFontSize fontPath text maxWidth scale size = do
-    font <- loadFont fontPath size
-    textWidth <- FTGL.getFontAdvance font text
-    if (textWidth*scale) >= maxWidth then findFontSize fontPath text maxWidth scale (size-1)
-    else return size
+findFontSize :: String -> Int
+findFontSize text = 
+    case (length text) of
+        1 -> 30
+        2 -> 30
+        3 -> 27
+        4 -> 20
+        5 -> 16
+        6 -> 13
+        7 -> 12
+        8 -> 10
 
 getColour :: Int -> Color4 GLfloat
 getColour num =
