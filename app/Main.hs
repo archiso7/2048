@@ -199,9 +199,13 @@ drawRectangle pos width height color = do
 
 handleKeys :: IORef [[Int]] -> KeyboardMouseCallback
 handleKeys boardRef (Char 'w') Down _ _ = moveAndRedraw boardRef DirUp
+handleKeys boardRef (SpecialKey KeyUp) Down _ _ = moveAndRedraw boardRef DirUp
 handleKeys boardRef (Char 's') Down _ _ = moveAndRedraw boardRef DirDown
+handleKeys boardRef (SpecialKey KeyDown) Down _ _ = moveAndRedraw boardRef DirDown
 handleKeys boardRef (Char 'a') Down _ _ = moveAndRedraw boardRef DirLeft
+handleKeys boardRef (SpecialKey KeyLeft) Down _ _ = moveAndRedraw boardRef DirLeft
 handleKeys boardRef (Char 'd') Down _ _ = moveAndRedraw boardRef DirRight
+handleKeys boardRef (SpecialKey KeyRight) Down _ _ = moveAndRedraw boardRef DirRight
 handleKeys _ _ _ _ _ = return ()
 
 moveAndRedraw :: IORef [[Int]] -> Direction -> IO ()
