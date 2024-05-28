@@ -6,7 +6,6 @@ import Graphics.Rendering.OpenGL as GL
 import Graphics.UI.GLUT
 import Data.IORef
 import Graphics.Rendering.FTGL as FTGL
-import Foreign.C.String (withCString)
 
 data Direction = DirUp | DirDown | DirLeft | DirRight | DirUnknown deriving (Eq, Show)
 
@@ -126,17 +125,24 @@ printBoard (row:rows) = do
     printBoard rows
 
 drawBoard :: [[Int]] -> GLfloat -> IO ()
-drawBoard board tileSize = drawTiles board [-0.625, -0.625] tileSize 0.1 0
+drawBoard board tileSize = do
+    font <- loadFont "COMICSANS.TTF" 24
+    drawTiles board [-0.625, -0.625] tileSize 0.1 0 font
 
-drawTiles :: [[Int]] -> [GLfloat] -> GLfloat -> GLfloat -> Int -> IO ()
-drawTiles tiles startPos tileSize offset i = do
+drawTiles :: [[Int]] -> [GLfloat] -> GLfloat -> GLfloat -> Int -> FTGL.Font -> IO ()
+drawTiles tiles startPos tileSize offset i font = do
     if i >= length (concat tiles) then return ()
     else do
         let [row, col] = iToPos i (length (head tiles))
             xPos = head startPos + offset + (fromIntegral col * (offset + tileSize))
-            yPos = startPos!!1 + offset + (fromIntegral (length tiles - 1 - row) * (offset + tileSize))
-        drawRectangle [xPos, yPos] tileSize tileSize (getColour (concat tiles!!i))
-        drawTiles tiles startPos tileSize offset (i+1)
+            yPos = startPos !! 1 + offset + (fromIntegral (length tiles - 1 - row) * (offset + tileSize))
+            num = concat tiles !! i
+            scale = 0.005
+        drawRectangle [xPos, yPos] tileSize tileSize (getColour num)
+        if num /= 0
+            then renderText font (show num) [scale, scale] (Color4 0.2 0.2 0.4 1) (Vector3 xPos (yPos-0.05) 0)
+            else return ()
+        drawTiles tiles startPos tileSize offset (i + 1) font
 
 getColour :: Int -> Color4 GLfloat
 getColour num =
@@ -160,9 +166,6 @@ display boardRef = do
 
     board <- readIORef boardRef
     drawBoard board 0.25
-
-    font <- loadFont "COMICSANS.TTF"  -- Load your font here
-    renderText font "Hello, OpenGL with Haskell!"
 
     flush
 
@@ -191,22 +194,26 @@ moveAndRedraw boardRef dir = do
     move boardRef dir
     postRedisplay Nothing
 
-loadFont :: String -> IO FTGL.Font
-loadFont fontPath = do
+loadFont :: String -> Int -> IO FTGL.Font
+loadFont fontPath fontSize = do
     font <- FTGL.createPolygonFont fontPath
-    FTGL.setFontFaceSize font 24 72 -- Set font size
+    FTGL.setFontFaceSize font fontSize 72 -- Set font size
     return font
 
-renderText :: FTGL.Font -> String -> IO ()
-renderText font text = do
-    withCString text $ \cText -> do
-        -- Position the text (adjust as needed)
-        translate $ Vector3 0 (-0.5 :: GLfloat) 0
-        renderFont font text All
+renderText :: FTGL.Font -> String -> [GLfloat] -> Color4 GLfloat -> Vector3 GLfloat -> IO ()
+renderText font text s color pos = do
+    currentColor $= color
+    preservingMatrix $ do
+        translate pos
+        scale (head s) (s !! 1) (1 :: GLfloat)
+        textWidth <- FTGL.getFontAdvance font text
+        let xOffset = - realToFrac textWidth / 2 :: GLfloat
+        translate $ Vector3 xOffset 0 0
+        FTGL.renderFont font text FTGL.All
 
 main :: IO ()
 main = do
-    let initialBoard = [[2,0,0,0],
+    let initialBoard = [[128,0,0,0],
                         [0,0,0,0],
                         [0,0,2,0],
                         [0,0,0,0]]
