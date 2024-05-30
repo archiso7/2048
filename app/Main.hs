@@ -8,6 +8,8 @@ import Data.IORef
 import Graphics.Rendering.FTGL as FTGL
 
 data Direction = DirUp | DirDown | DirLeft | DirRight | DirUnknown deriving (Eq, Show)
+data Action = Pressed | Draw | DrawSelected
+type Button = Action -> IORef [[Int]] -> FTGL.Font -> IO ()
 
 countZeros :: [[Int]] -> Int
 countZeros lists = sum [1 | sublist <- lists, elem <- sublist, elem == 0]
@@ -23,18 +25,19 @@ countValues list value =
 
 indexNthValue :: [Int] -> Int -> Int -> Int -> Int
 indexNthValue list value n pos
-  | n == 0 = pos-1
-  | list!!pos == value = indexNthValue list value (n-1) (pos+1)
-  | otherwise = indexNthValue list value n (pos+1)
+  | pos > length list = error (show pos)
+  | n == (-1) = pos - 1
+  | list !! pos == value = indexNthValue list value (n - 1) (pos + 1)
+  | otherwise = indexNthValue list value n (pos + 1)
 
 indexNthValue2D :: [[Int]] -> Int -> Int -> [Int] -> [Int]
-indexNthValue2D list value 0 pos = pos
+indexNthValue2D list value (-1) pos = pos
 indexNthValue2D list value n pos =
-  let count = countValues (list !! head pos) value
-  in
-    if n > count
-      then indexNthValue2D list value (n - count) (head pos + 1 : tail pos)
-      else [head pos, indexNthValue (list !! head pos) value n 0]
+  let count = (countValues (list !! head pos) value) - 1
+  in if head pos >= length list then error (show (pos))
+     else if n > count
+          then indexNthValue2D list value (n - (count+1)) (head pos + 1 : tail pos)
+          else [head pos, indexNthValue (list !! head pos) value n 0]
 
 incrementPos :: [Int] -> Int -> [Int] -> [Int]
 incrementPos [y, x] inc [rows, cols]
@@ -61,11 +64,13 @@ move boardRef dir = do
     board <- readIORef boardRef
     let newBoard = reverseRotateMatrix (moveTiles (combineTiles (moveTiles (rotateMatrix board dir) [0,0]) [1,0]) [0,0]) dir
     num <- randomRIO (1,2)
-    postotal <- randomRIO (0, countZeros newBoard)
-    let pos = indexNthValue2D newBoard 0 postotal [0,0]
-    let newBoard' = if dir /= DirUnknown && newBoard /= board then replaceAt2D (head pos) (pos!!1) (num*2) newBoard
+    let zerosCount = countZeros newBoard
+    postotal <- randomRIO (0, max 0 (zerosCount - 1))
+    let pos = if zerosCount > 0 then indexNthValue2D newBoard 0 postotal [0,0] else [0,0]
+    let newBoard' = if dir /= DirUnknown && newBoard /= board 
+                    then replaceAt2D (head pos) (pos!!1) (num*2) newBoard
                     else newBoard
-    
+
     -- Write the updated board back to the IORef
     writeIORef boardRef newBoard'
 
@@ -175,8 +180,29 @@ getColour num =
         2048 -> Color4 237 194 46 255
         _ -> Color4 10 10 10 255
 
-display :: IORef [[Int]] -> DisplayCallback
-display boardRef = do
+displayMenu :: IORef Int -> IORef [Button] -> String -> DisplayCallback
+displayMenu selectedButtonRef buttonsRef menuName = do
+    clear [ ColorBuffer ]
+    selectedButton <- readIORef selectedButtonRef
+    buttons <- readIORef buttonsRef
+    font <- loadFont "COMICSANS.TTF" 24
+
+    drawRectangle [0,0] 2 2 (Color4 30 0 72 255)
+    drawButtons selectedButton buttons font
+    renderText font menuName [0.01, 0.01] (Color4 0 0 0 1) (Vector3 0 0.25 0)
+
+    flush
+
+drawButtons :: Int -> [Button] -> FTGL.Font -> IO ()
+drawButtons selectedButton [] font = return ()
+drawButtons selectedButton buttons font = do
+    let action = if selectedButton == 0 then DrawSelected else Draw
+    tempIORef <- newIORef [[0]]
+    (head buttons) action tempIORef font
+    drawButtons (selectedButton-1) (tail buttons) font
+
+displayBoard :: IORef [[Int]] -> DisplayCallback
+displayBoard boardRef = do
     clear [ ColorBuffer ]
 
     board <- readIORef boardRef
@@ -197,12 +223,13 @@ drawRectangle pos width height color = do
     vertex $ Vertex3 (width / 2 + head pos) (height / 2 + pos!!1) 0
     vertex $ Vertex3 ((-width / 2) + head pos) (height / 2 + pos!!1) 0
 
-buttonPress :: IORef Int -> IORef [String -> IORef [[Int]] -> IO ()] -> IORef [[Int]] -> IO ()
+buttonPress :: IORef Int -> IORef [Button] -> IORef [[Int]] -> IO ()
 buttonPress selectedButtonRef buttonsRef boardRef = do
     selectedButton <- readIORef selectedButtonRef
     buttons <- readIORef buttonsRef
+    font <- loadFont "COMICSANS.TTF" 24
     let button = buttons !! selectedButton
-    button "Pressed" boardRef
+    button Pressed boardRef font
 
 incrementIndex :: Int -> Int -> Int -> Int
 incrementIndex length index inc = 
@@ -211,76 +238,102 @@ incrementIndex length index inc =
     else if newIndex >= length then newIndex - length
     else newIndex
 
-changeButton :: IORef Int -> IORef [String -> IORef [[Int]] -> IO ()] -> Int -> IO ()
+changeButton :: IORef Int -> IORef [Button] -> Int -> IO ()
 changeButton selectedButtonRef buttonsRef dir = do
     selectedButton <- readIORef selectedButtonRef
     buttons <- readIORef buttonsRef
     writeIORef selectedButtonRef (incrementIndex (length buttons) selectedButton dir)
 
-menuKeys :: IORef Int -> IORef [String -> IORef [[Int]] -> IO ()] -> IORef [[Int]] -> KeyboardMouseCallback
-menuKeys selectedButtonRef buttonsRef boardRef (Char '\r') Down _ _ = buttonPress selectedButtonRef buttonsRef boardRef
-menuKeys selectedButtonRef buttonsRef boardRef (SpecialKey KeyUp) Down _ _ = changeButton selectedButtonRef buttonsRef (-1)
-menuKeys selectedButtonRef buttonsRef boardRef (SpecialKey KeyDown) Down _ _ = changeButton selectedButtonRef buttonsRef 1
+menuKeys :: IORef Int -> IORef [Button] -> IORef [[Int]] -> KeyboardMouseCallback
+menuKeys selectedButtonRef buttonsRef boardRef (Char '\r') Down _ _ = do
+    buttonPress selectedButtonRef buttonsRef boardRef
+    postRedisplay Nothing
+menuKeys selectedButtonRef buttonsRef boardRef (SpecialKey KeyUp) Down _ _ = do
+    changeButton selectedButtonRef buttonsRef (-1)
+    postRedisplay Nothing
+menuKeys selectedButtonRef buttonsRef boardRef (SpecialKey KeyDown) Down _ _ = do
+    changeButton selectedButtonRef buttonsRef 1
+    postRedisplay Nothing
 menuKeys _ _ _ _ _ _ _ = return ()
 
-gameKeys :: IORef [[Int]] -> KeyboardMouseCallback
-gameKeys boardRef (Char 'w') Down _ _ = moveAndRedraw boardRef DirUp
-gameKeys boardRef (SpecialKey KeyUp) Down _ _ = moveAndRedraw boardRef DirUp
-gameKeys boardRef (Char 's') Down _ _ = moveAndRedraw boardRef DirDown
-gameKeys boardRef (SpecialKey KeyDown) Down _ _ = moveAndRedraw boardRef DirDown
-gameKeys boardRef (Char 'a') Down _ _ = moveAndRedraw boardRef DirLeft
-gameKeys boardRef (SpecialKey KeyLeft) Down _ _ = moveAndRedraw boardRef DirLeft
-gameKeys boardRef (Char 'd') Down _ _ = moveAndRedraw boardRef DirRight
-gameKeys boardRef (SpecialKey KeyRight) Down _ _ = moveAndRedraw boardRef DirRight
-gameKeys _ _ _ _ _ = return ()
+gameKeys :: IORef [[Int]] -> IORef Bool -> KeyboardMouseCallback
+gameKeys boardRef hasWonRef (Char 'w') Down _ _ = moveAndRedraw boardRef DirUp hasWonRef
+gameKeys boardRef hasWonRef (SpecialKey KeyUp) Down _ _ = moveAndRedraw boardRef DirUp hasWonRef
+gameKeys boardRef hasWonRef (Char 's') Down _ _ = moveAndRedraw boardRef DirDown hasWonRef
+gameKeys boardRef hasWonRef (SpecialKey KeyDown) Down _ _ = moveAndRedraw boardRef DirDown hasWonRef
+gameKeys boardRef hasWonRef (Char 'a') Down _ _ = moveAndRedraw boardRef DirLeft hasWonRef
+gameKeys boardRef hasWonRef (SpecialKey KeyLeft) Down _ _ = moveAndRedraw boardRef DirLeft hasWonRef
+gameKeys boardRef hasWonRef (Char 'd') Down _ _ = moveAndRedraw boardRef DirRight hasWonRef
+gameKeys boardRef hasWonRef (SpecialKey KeyRight) Down _ _ = moveAndRedraw boardRef DirRight hasWonRef
+gameKeys _ _ _ _ _ _ = return ()
 
-moveAndRedraw :: IORef [[Int]] -> Direction -> IO ()
-moveAndRedraw boardRef dir = do
+moveAndRedraw :: IORef [[Int]] -> Direction -> IORef Bool -> IO ()
+moveAndRedraw boardRef dir hasWonRef = do
     move boardRef dir
-    checkState boardRef
+    checkState boardRef hasWonRef
     postRedisplay Nothing
 
 containsValue :: Eq a => a -> [[a]] -> Bool
 containsValue val listOfLists = any (elem val) listOfLists
 
-resume :: String -> IORef [[Int]] -> IO ()
-resume action boardRef = 
-    if action == "Pressed" then do
-        keyboardMouseCallback $= Just (gameKeys boardRef)
-    else return ()
+resume :: Button
+resume action boardRef font = 
+    case action of
+        Pressed -> do
+            hasWonRef <- newIORef True
+            displayCallback $= displayBoard boardRef
+            keyboardMouseCallback $= Just (gameKeys boardRef hasWonRef)
+        Draw -> do 
+            drawRectangle [0, -0.25] 0.5 0.2 (Color4 82 4 97 255)
+            renderText font "resume" [0.005, 0.005] (Color4 0 0 0 1) (Vector3 0 ((-0.25)-(0.225/4)) 0)
+        DrawSelected -> do
+            drawRectangle [0, -0.25] 0.525 0.225 (Color4 228 0 116 255)
+            drawRectangle [0, -0.25] 0.5 0.2 (Color4 82 4 97 255)
+            renderText font "resume" [0.005, 0.005] (Color4 0 0 0 1) (Vector3 0 ((-0.25)-(0.225/4)) 0)
 
-restart :: String -> IORef [[Int]] -> IO ()
-restart action boardRef = 
-    if action == "Pressed" then do
-        let initialBoard = [[0,0,0,0],
+restart :: Button
+restart action boardRef font = 
+    case action of
+        Pressed -> do
+            let initialBoard = [[0,0,0,0],
                         [2,0,0,0],
                         [0,0,0,0],
                         [0,0,2,0]]
-        writeIORef boardRef initialBoard
-        keyboardMouseCallback $= Just (gameKeys boardRef)
-        postRedisplay Nothing
-    else return ()
+            writeIORef boardRef initialBoard
+            hasWonRef <- newIORef False
+            displayCallback $= displayBoard boardRef
+            keyboardMouseCallback $= Just (gameKeys boardRef hasWonRef)
+            postRedisplay Nothing
+        Draw -> do 
+            drawRectangle [0, -0.5] 0.5 0.2 (Color4 82 4 97 255)
+            renderText font "restart" [0.005, 0.005] (Color4 0 0 0 1) (Vector3 0 ((-0.5)-(0.225/4)) 0)
+        DrawSelected -> do
+            drawRectangle [0, -0.5] 0.525 0.225 (Color4 228 0 116 255)
+            drawRectangle [0, -0.5] 0.5 0.2 (Color4 82 4 97 255)
+            renderText font "restart" [0.005, 0.005] (Color4 0 0 0 1) (Vector3 0 ((-0.5)-(0.225/4)) 0)
 
 win :: IORef [[Int]] -> IO()
 win boardRef = do
-    print "Win"
     selectedButtonRef <- newIORef 0
     let buttons = [resume, restart]
     buttonsRef <- newIORef buttons
     keyboardMouseCallback $= Just (menuKeys selectedButtonRef buttonsRef boardRef)
+    displayCallback $= displayMenu selectedButtonRef buttonsRef "You Win!"
+    postRedisplay Nothing
 
 loss :: IORef [[Int]] -> IO()
 loss boardRef = do
-    print "loss"
     selectedButtonRef <- newIORef 0
     let buttons = [restart]
     buttonsRef <- newIORef buttons
     keyboardMouseCallback $= Just (menuKeys selectedButtonRef buttonsRef boardRef)
+    displayCallback $= displayMenu selectedButtonRef buttonsRef "You Lose"
 
-checkState :: IORef [[Int]] -> IO ()
-checkState boardRef = do
+checkState :: IORef [[Int]] -> IORef Bool -> IO ()
+checkState boardRef hasWonRef = do
     board <- readIORef boardRef
-    if containsValue 2048 board then win boardRef
+    hasWon <- readIORef hasWonRef
+    if (containsValue 2048 board) && (not hasWon) then win boardRef
     else if checkLoss board 0 then loss boardRef
     else return ()
 
@@ -310,15 +363,16 @@ renderText font text s color pos = do
 
 main :: IO ()
 main = do
-    let initialBoard = [[0,0,0,0],
-                        [2,0,0,0],
+    let initialBoard = [[1024,1024,0,0],
+                        [0,0,0,0],
                         [0,0,0,0],
                         [0,0,2,0]]
 
     -- Create an IORef to hold the board state
     boardRef <- newIORef initialBoard
+    hasWonRef <- newIORef False
     (_progName, _args) <- getArgsAndInitialize
     _window <- createWindow "2048"
-    displayCallback $= display boardRef
-    keyboardMouseCallback $= Just (gameKeys boardRef)
+    displayCallback $= displayBoard boardRef
+    keyboardMouseCallback $= Just (gameKeys boardRef hasWonRef)
     mainLoop
