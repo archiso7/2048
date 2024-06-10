@@ -363,7 +363,7 @@ renderText font text s color pos = do
 
 main :: IO ()
 main = do
-    let initialBoard = [[1024,1024,0,0],
+    let initialBoard = [[0,2,0,0],
                         [0,0,0,0],
                         [0,0,0,0],
                         [0,0,2,0]]
